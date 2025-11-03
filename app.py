@@ -40,7 +40,7 @@ hr {
 
 # =================== TITLE ===================
 st.title("🏏 IPL Interactive Analytics Dashboard")
-st.markdown("### Local CSV • ML Predictions • Player Comparison")
+st.markdown("### Local CSV • ML Predictions • Player & Team Comparison")
 
 # =================== FILE UPLOAD ===================
 match_file = st.file_uploader("📂 Upload IPL Match Data CSV", type=["csv"])
@@ -72,7 +72,7 @@ team_df["team_runs"] = team_df.apply(lambda r: r["runs_team1"] if r["team1"] == 
 team_df = team_df.sort_values("date")
 
 # =================== TABS ===================
-tabs = st.tabs(["📈 Team Performance", "🧩 Player Comparison", "🏅 Top Performers"])
+tabs = st.tabs(["📈 Team Performance", "⚔️ Team Comparison", "🧩 Player Comparison", "🏅 Top Performers"])
 
 # ========== TAB 1: TEAM PERFORMANCE ==========
 with tabs[0]:
@@ -141,8 +141,50 @@ with tabs[0]:
     else:
         st.info("Need at least 5 matches for prediction.")
 
-# ========== TAB 2: PLAYER COMPARISON ==========
+# ========== TAB 2: TEAM COMPARISON ==========
 with tabs[1]:
+    st.header("⚔️ Team vs Team Comparison")
+
+    col1, col2 = st.columns(2)
+    team_a = col1.selectbox("Select Team A", teams)
+    team_b = col2.selectbox("Select Team B", [t for t in teams if t != team_a])
+
+    # Filter matches where both teams played against each other
+    matchups = df[((df.team1 == team_a) & (df.team2 == team_b)) | ((df.team1 == team_b) & (df.team2 == team_a))]
+
+    if matchups.empty:
+        st.info(f"No matches found between {team_a} and {team_b}")
+    else:
+        st.subheader(f"Head-to-Head: {team_a} vs {team_b}")
+        wins_a = (matchups["winner"] == team_a).sum()
+        wins_b = (matchups["winner"] == team_b).sum()
+        st.metric(f"{team_a} Wins", wins_a)
+        st.metric(f"{team_b} Wins", wins_b)
+        fig = px.bar(
+            x=[team_a, team_b],
+            y=[wins_a, wins_b],
+            color=[team_a, team_b],
+            color_discrete_sequence=["#38bdf8", "#22c55e"],
+            title="🏆 Head-to-Head Wins"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Average runs comparison
+        avg_runs = matchups.groupby("team1")[["runs_team1"]].mean().rename(columns={"runs_team1": "avg_runs"}).reset_index()
+        avg_runs = pd.concat([
+            avg_runs,
+            matchups.groupby("team2")[["runs_team2"]].mean().rename(columns={"runs_team2": "avg_runs"}).reset_index()
+        ])
+        avg_runs = avg_runs.groupby("team1")["avg_runs"].mean().reset_index().rename(columns={"team1": "Team"})
+
+        fig2 = px.bar(avg_runs, x="Team", y="avg_runs", color="Team", color_discrete_sequence=["#38bdf8", "#22c55e"],
+                      title="📊 Average Runs Comparison")
+        fig2.update_layout(template="plotly_dark")
+        st.plotly_chart(fig2, use_container_width=True)
+
+# ========== TAB 3: PLAYER COMPARISON ==========
+with tabs[2]:
     st.header("🧩 Player Comparison")
 
     player_file = st.file_uploader("📂 Upload Player Stats CSV", type=["csv"], key="p_upload")
@@ -159,6 +201,14 @@ with tabs[1]:
             df1 = players[players["player_name"] == player1].iloc[0]
             df2 = players[players["player_name"] == player2].iloc[0]
 
+            # Show each player’s stats separately
+            st.subheader(f"📋 {player1} Statistics")
+            st.write(df1.to_frame().T)
+
+            st.subheader(f"📋 {player2} Statistics")
+            st.write(df2.to_frame().T)
+
+            # Comparison bar chart
             compare = pd.DataFrame({
                 "Metric": ["Runs", "Wickets", "Strike Rate", "Economy"],
                 player1: [df1["runs"], df1["wickets"], df1["strike_rate"], df1["economy"]],
@@ -178,8 +228,8 @@ with tabs[1]:
     else:
         st.info("Upload a CSV with player stats.")
 
-# ========== TAB 3: TOP PERFORMERS ==========
-with tabs[2]:
+# ========== TAB 4: TOP PERFORMERS ==========
+with tabs[3]:
     st.header("🏅 Top Performer Analysis")
     if player_file:
         players["bat_score"] = (
@@ -207,5 +257,13 @@ with tabs[2]:
         )
         fig_top.update_layout(template="plotly_dark")
         st.plotly_chart(fig_top, use_container_width=True)
+
+        # Best Batsman & Bowler
+        st.subheader("🏆 Best Batsman & Bowler")
+        best_batsman = players.loc[players["runs"].idxmax()]
+        best_bowler = players.loc[players["wickets"].idxmax()]
+        col1, col2 = st.columns(2)
+        col1.success(f"🏏 Best Batsman: {best_batsman['player_name']} ({best_batsman['runs']} runs)")
+        col2.info(f"🎯 Best Bowler: {best_bowler['player_name']} ({best_bowler['wickets']} wickets)")
     else:
         st.info("Upload a player stats CSV to view top performers.")
